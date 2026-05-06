@@ -1,13 +1,13 @@
 # jv-build-and-review
 
-Two skills for Claude that work together as a build-and-review system: one runs an
-existing plan to completion, the other reviews UI/UX work or proposes design plans.
+Two skills for Claude that work together as a build-and-review system: one plans and
+runs project work end-to-end, the other reviews UI/UX work or proposes design plans.
 
 ## What's here
 
 ```
 jv-build-and-review/
-├── plan-runner/         — takes a plan, runs it, reviews, fixes, ships
+├── plan-runner/         — plans (or ingests one), runs, reviews, fixes, ships
 │   ├── SKILL.md
 │   └── references/
 │       ├── review-patterns.md   — code review prompts, dispatch templates, MoA protocol
@@ -24,17 +24,22 @@ jv-build-and-review/
 
 ## When to use which
 
-**plan-runner** — you already have a plan, brief, or PRD and you want it built. The skill
-decomposes the plan into a parallel execution DAG, dispatches builder agents, runs reviews
-with real tools (linters, tests, screenshots), dispatches targeted fixers/improvers, and
-gates the work behind a two-tier pass gate (Tier 1: build compiles + tests pass + a11y;
-Tier 2: design score ≥ 7/10). Loops until both tiers pass or the iteration cap fires.
+**plan-runner** — you have a project to build. Hand it a fuzzy request ("build me X,"
+"create a Y") and it'll produce a structured plan from scratch; hand it an existing
+plan/brief/PRD and it'll adapt that plan for execution (tightening vague deliverables,
+making "done" testable, surfacing assumptions, proposing foundational decisions where
+missing) — or run it as-is if you say so. Either way, you approve the plan before it runs.
+Then plan-runner decomposes the plan into a parallel execution DAG, dispatches builder
+agents, runs reviews with real tools (linters, tests, screenshots), dispatches targeted
+fixers/improvers, and gates the work behind a two-tier pass gate (Tier 1: build compiles
++ tests pass + a11y; Tier 2: design score ≥ 7/10). Loops until both tiers pass or the
+iteration cap fires.
 
-Trigger phrases: "run this plan," "build from this spec," "execute this PRD," "implement
-this brief."
+Trigger phrases: "build me X," "create a Y," "implement Z," "make me a plan for W,"
+"run this plan," "execute this PRD."
 
-Don't trigger for: "make me a plan." That's a different task — plan-runner ingests plans;
-it doesn't write them.
+Don't trigger for: trivial single-file changes, pure questions, or one-shot tasks that
+don't justify the planning + DAG + review ceremony. Plan-runner is for multi-step work.
 
 **design-reviewer** — you have a UI to review, OR you want a design plan (new design or
 improvement plan). Reviews at four zoom levels (pixel → component → composition → flow/IA)
@@ -74,8 +79,10 @@ These are Claude skills — folders containing a SKILL.md with frontmatter and a
 
 The skills have been adapted from upstream defaults to fit a specific build/review model:
 
-- **plan-runner** assumes you're handing it an existing plan, not asking it to plan from
-  scratch. Phase 0 validates the plan; it does not write one.
+- **plan-runner** handles both modes — fuzzy requests (it produces a plan first, gets your
+  approval, then runs it) and existing plans (it validates, adapts the plan for execution,
+  shows you the diff, and gets approval before running). Phase 0 detects which mode based
+  on what you give it. Both paths converge on the same approval-then-run flow.
 - **plan-runner** specifies a two-tier pass gate (Tier 1 = table-stakes: compiles, tests
   pass, a11y. Tier 2 = quality: design score ≥ 7/10, no dimension below 5). Edit
   `plan-runner/references/pass-gate.md` if you want to change the bar.

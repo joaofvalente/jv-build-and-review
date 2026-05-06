@@ -1,24 +1,26 @@
 ---
 name: plan-runner
 description: >
-  Takes an existing plan and runs it: decomposes the plan into an execution DAG, dispatches
-  builder agents in parallel, reviews their output with real tools (code analysis, tests,
-  screenshots), then dispatches targeted fixer/improver/builder agents to elevate the build,
-  and loops until a two-tier pass gate is met. Trigger this skill when the user already has
-  a plan and says "run this plan," "execute this," "build from this plan," "implement this
-  spec," or hands over any structured plan/PRD/brief that needs to be turned into shipped
-  work. Do NOT trigger when the user wants to CREATE a plan — that's a separate task. This
-  skill ingests a plan and runs the full build → review → fix → ship loop.
+  Plans and runs project work end-to-end. Takes either a fuzzy request ("build me X,"
+  "create a Y") or an existing plan/PRD/brief, produces or validates a structured plan,
+  decomposes it into a parallel execution DAG, dispatches builder agents, reviews their
+  output with real tools (code analysis, tests, screenshots), then dispatches targeted
+  fixer/improver/builder agents to elevate the build, and loops until a two-tier pass
+  gate is met. Trigger this skill when the user wants to "build," "create," "implement,"
+  "make," or "ship" something with multiple parts; or when they hand over a plan/spec/PRD
+  and say "run this," "execute this," "build from this." This skill ingests a plan if one
+  exists and creates one if not, then runs the full lifecycle through to ship.
 ---
 
 # Plan Runner
 
-You take an existing plan and run it to completion. Your job is not to invent the plan —
-the user already has one. Your job is to convert it into a parallel execution DAG, dispatch
-builder agents, review their output with real tools, dispatch targeted fixers, and gate the
-work behind a two-tier pass criterion. You do not ship work you have not verified.
+You plan and run project work end-to-end. Given a fuzzy request, you produce a structured
+plan first; given an existing plan, you skip planning and validate. Either way, you
+decompose the plan into a parallel execution DAG, dispatch builder agents, review their
+output with real tools, dispatch targeted fixers, and gate the work behind a two-tier pass
+criterion. You do not ship work you have not verified.
 
-This skill defines the full lifecycle: **ingest → decompose → dispatch → review → fix →
+This skill defines the full lifecycle: **plan → decompose → dispatch → review → fix →
 gate → ship**.
 
 ---
@@ -48,16 +50,34 @@ your environment. If a step requires a tool you don't have, say so — don't fak
 
 ---
 
-## Phase 0 — Ingest the Plan
+## Phase 0 — Plan (Create or Ingest)
 
-The user is handing you a plan. Read it before you do anything else.
+The user has given you something. Look at it before acting — the planning step depends on
+what kind of input you got.
 
-A real plan has: a goal, a list of deliverables, constraints (tech stack, deadline, scope
-boundaries), and a definition of done. If the plan is missing any of these, **stop and
-ask** — don't guess. Wrong assumptions about scope or done-criteria cascade through every
-downstream phase.
+### Detect what you got
 
-Validate the plan against this checklist:
+- **Existing plan** — any structured input that names deliverables and constraints, even
+  if incomplete. Validate and adapt it (next section), then move to Phase 1.
+- **Fuzzy request** — "build me X," "create a Y," "I want a Z that does..." with no
+  structured plan attached. Run the planning sub-flow below to produce a plan, get user
+  approval, then move to Phase 1.
+
+When in doubt, treat what you got as fuzzy and run the planning sub-flow — it'll surface
+any structure the user already had and confirm it back to them.
+
+### If existing plan: validate and adapt
+
+A real plan has a goal, a list of deliverables, constraints (tech stack, deadline, scope
+boundaries), and a definition of done. But even a complete plan often isn't ready for
+execution — it can be vague, written for a different audience, or implicit about
+foundational decisions. Your job in Phase 0 is to make the plan **executable**: validate
+what's there, adapt what's vague, surface what's implicit, then get user approval before
+running it.
+
+#### Validate
+
+Check the input against this checklist:
 
 1. **Is the goal explicit?** What does success look like in one sentence?
 2. **Are the deliverables enumerable?** You should be able to list them.
@@ -65,8 +85,122 @@ Validate the plan against this checklist:
 4. **Is "done" defined?** What test or check confirms the work is shippable?
 5. **Are there gaps or contradictions?** Surface them now, not at review time.
 
-If gaps exist, ask the user **focused** questions and incorporate the answers into a
-revised version of the plan that you'll work from. Do not proceed with an incomplete plan.
+If anything is missing, ask focused questions. Don't proceed with an incomplete plan.
+
+#### Adapt
+
+Make the plan ready for execution. Specifically:
+
+- **Tighten ambiguous deliverables.** If the plan says "user authentication," propose
+  specific outputs — "sign-up page, sign-in page, password-reset flow, session middleware,
+  user table migration" — each with an acceptance criterion.
+- **Make "done" testable.** If the plan says "must work well," propose concrete checks
+  ("all flows pass end-to-end on Chrome and Safari at 375 / 768 / 1440 viewports") rather
+  than aspirational language.
+- **Propose foundational decisions where missing.** Architecture pattern, data model
+  shape, design direction, integration points — if any of these isn't in the plan, propose
+  a default *with rationale*. The user overrides anything they want.
+- **Surface assumptions.** If you're inferring something from context ("I assume
+  TypeScript because the existing repo is TS"), name it so the user can correct.
+
+Produce an **adapted plan** in the same structured format used by the fuzzy-request path
+(see Step 7 below — the same template applies). This is what Phase 1 will operate on.
+
+#### Show the diff and get approval
+
+Present the user with two things:
+
+1. The adapted plan, in full.
+2. A short summary of what you changed: which deliverables you sharpened, which
+   foundational decisions you proposed, which assumptions you surfaced, which gaps you
+   filled.
+
+Do not silently change the plan and run it. The user must see what was adapted and choose
+one of: **accept** (move to Phase 1), **override** specific changes (revise and re-show),
+or **use as-is** (skip adaptation, run the original plan unchanged). "Use as-is" is a
+valid choice — some users want raw execution against a deliberately minimal plan. Honor
+it without arguing.
+
+If the user picks "use as-is," still surface anything from the validation checklist that's
+*missing* (not just vague) — incomplete plans don't run, regardless of how minimal the user
+wanted them.
+
+### If fuzzy request: planning sub-flow
+
+This is itself a small, structured process. Don't skip steps — wrong assumptions here
+cascade through every downstream phase.
+
+**Step 1 — Clarify the goal.** Ask the user to describe the outcome in one sentence. If
+they can't, the request isn't ready for a plan; surface that.
+
+**Step 2 — Identify the user.** Who uses this? Consumer? Internal team? Yourself? What
+do they care about? Get specific — "everyone" is not a user.
+
+**Step 3 — Surface constraints.** Tech stack, environment, deadline, budget, must-have
+features vs nice-to-have. What's NOT in scope. Existing code or systems that must be
+respected.
+
+**Step 4 — Define "done."** What does the shipped result look like in concrete terms?
+What test, screenshot, or behavior confirms the work is complete? Without this, the
+review phase has no bar to measure against.
+
+**Step 5 — Enumerate deliverables.** From the goal + constraints, list the artifacts the
+project must produce: files, components, endpoints, documents, screens. Each should be
+nameable and have a clear acceptance criterion.
+
+**Step 6 — Surface foundational decisions.** Some choices have to be made before
+decomposition because they constrain everything downstream:
+
+- Architecture pattern (monolith / serverless / static / etc.)
+- Data model shape (if there's persistence)
+- Design direction (if there's UI — delegate to the `design-reviewer` skill in
+  plan-create mode if the user wants help here)
+- Integration points (what existing systems this must talk to)
+
+If any of these isn't decided, ask the user. Don't pick for them silently.
+
+**Step 7 — Write the plan.** Produce a structured plan document the user can read and
+approve:
+
+```
+## Plan: [Project Name]
+
+### Goal
+[One sentence]
+
+### User
+[Who, what they care about]
+
+### Constraints
+- Stack: [...]
+- Environment: [...]
+- Must-haves: [...]
+- Out of scope: [...]
+
+### Deliverables
+- [Artifact 1] — [purpose] — [acceptance criterion]
+- [Artifact 2] — [purpose] — [acceptance criterion]
+- [...]
+
+### Foundational decisions
+- Architecture: [...]
+- Data model: [...]
+- Design direction: [...]
+- Integrations: [...]
+
+### Definition of done
+[What confirms the work ships]
+```
+
+**Step 8 — Get user approval.** Present the plan. If the user wants changes, revise. Move
+to Phase 1 only once they sign off — or once they say "just run it" and accept the plan
+as-is. If they keep iterating without approving, ask what specifically isn't right;
+endless plan-revision is a signal the goal itself isn't clear.
+
+### After Phase 0
+
+Whichever path produced it, you now have a structured plan. Phase 1 doesn't care which
+path you took — it operates on the plan as-is.
 
 ---
 
